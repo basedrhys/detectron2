@@ -17,6 +17,8 @@ import torch
 from fvcore.common.file_io import PathManager
 from fvcore.nn.precise_bn import get_bn_modules
 from torch.nn.parallel import DistributedDataParallel
+from shutil import copyfile
+import tempfile
 
 import detectron2.data.transforms as T
 from detectron2.checkpoint import DetectionCheckpointer
@@ -42,8 +44,11 @@ from detectron2.utils.logger import setup_logger
 from . import hooks
 from .train_loop import SimpleTrainer
 
+import wandb
+
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
 
+from detectron2.evaluation import COCOEvaluator
 
 def default_argument_parser():
     """
@@ -273,6 +278,8 @@ class DefaultTrainer(SimpleTrainer):
         self.max_iter = cfg.SOLVER.MAX_ITER
         self.cfg = cfg
 
+        self.best_ap = -1
+
         self.register_hooks(self.build_hooks())
 
     def resume_or_load(self, resume=True):
@@ -328,7 +335,34 @@ class DefaultTrainer(SimpleTrainer):
             ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
 
         def test_and_save_results():
-            self._last_eval_results = self.test(self.cfg, self.model)
+            evaluators = [COCOEvaluator(test_set, cfg, False, output_dir="./output/") for test_set in cfg.DATASETS.TEST]
+            self._last_eval_results = self.test(self.cfg, self.model, evaluators=evaluators)
+            wandb.log({
+                "AP": self._last_eval_results['bbox']['AP'],
+                "AP50": self._last_eval_results['bbox']['AP50'],
+                "AP75": self._last_eval_results['bbox']['AP75']},
+                step=self.iter)
+
+            ap = self._last_eval_results['bbox']['AP']
+            if ap > self.best_ap:
+                print("New best model, saving to WANDB")
+                model_path = os.path.join(cfg.OUTPUT_DIR, 'model_{}.pth'.format(str(self.iter).zfill(7)))
+                tmp_model_path = os.path.join(tempfile.gettempdir(), 'model_best_iter-{}_ap-{}.pth'.format(self.iter, round(ap, 3)))
+                copyfile(model_path, tmp_model_path)
+                # Save the model to WANDB
+                wandb.save(tmp_model_path)
+                self.best_ap = ap
+            elif abs(ap - self.best_ap) < 1:
+                print("Fairly similar AP, saving anyway")
+                model_path = os.path.join(cfg.OUTPUT_DIR, 'model_{}.pth'.format(str(self.iter).zfill(7)))
+                tmp_model_path = os.path.join(tempfile.gettempdir(), 'model_iter-{}_ap-{}.pth'.format(self.iter, round(ap, 3)))
+                copyfile(model_path, tmp_model_path)
+                # Save the model to WANDB
+                wandb.save(tmp_model_path)
+
+            print("TESTING FINISHED")
+            print(self._last_eval_results)
+            print()
             return self._last_eval_results
 
         # Do evaluation after checkpointer, because then if it fails,
@@ -337,7 +371,7 @@ class DefaultTrainer(SimpleTrainer):
 
         if comm.is_main_process():
             # run writers in the end, so that evaluation metrics are written
-            ret.append(hooks.PeriodicWriter(self.build_writers(), period=20))
+            ret.append(hooks.PeriodicWriter(self.build_writers()))
         return ret
 
     def build_writers(self):
@@ -362,13 +396,23 @@ class DefaultTrainer(SimpleTrainer):
             ]
 
         """
-        # Here the default print/log frequency of each writer is used.
+        # Assume the default print/log frequency.
         return [
             # It may not always print what you want to see, since it prints "common" metrics only.
             CommonMetricPrinter(self.max_iter),
             JSONWriter(os.path.join(self.cfg.OUTPUT_DIR, "metrics.json")),
             TensorboardXWriter(self.cfg.OUTPUT_DIR),
         ]
+
+    def wandb_config(self):
+        w_config = wandb.config
+        cfg = self.cfg
+        w_config.imgs_per_batch = cfg.SOLVER.IMS_PER_BATCH
+        w_config.batch_size = cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE
+        w_config.learning_rate = cfg.SOLVER.BASE_LR
+        w_config.max_iter = cfg.SOLVER.MAX_ITER
+        w_config.eval_period = cfg.TEST.EVAL_PERIOD
+        w_config.model_weights = cfg.MODEL.WEIGHTS
 
     def train(self):
         """
@@ -377,11 +421,9 @@ class DefaultTrainer(SimpleTrainer):
         Returns:
             OrderedDict of results, if evaluation is enabled. Otherwise None.
         """
+        self.wandb_config()
         super().train(self.start_iter, self.max_iter)
-        if len(self.cfg.TEST.EXPECTED_RESULTS) and comm.is_main_process():
-            assert hasattr(
-                self, "_last_eval_results"
-            ), "No evaluation results obtained during training!"
+        if hasattr(self, "_last_eval_results") and comm.is_main_process():
             verify_results(self.cfg, self._last_eval_results)
             return self._last_eval_results
 
