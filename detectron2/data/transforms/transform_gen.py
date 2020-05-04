@@ -18,9 +18,10 @@ from fvcore.transforms.transform import (
 )
 from PIL import Image
 
-from .transform import ExtentTransform, ResizeTransform
+from .transform import ExtentTransform, ResizeTransform, RotationTransform
 
 __all__ = [
+    "RandomApply",
     "RandomBrightness",
     "RandomContrast",
     "RandomCrop",
@@ -28,6 +29,7 @@ __all__ = [
     "RandomFlip",
     "RandomSaturation",
     "RandomLighting",
+    "RandomRotation",
     "Resize",
     "ResizeShortestEdge",
     "TransformGen",
@@ -110,6 +112,40 @@ class TransformGen(metaclass=ABCMeta):
             return super().__repr__()
 
     __str__ = __repr__
+
+
+class RandomApply(TransformGen):
+    """
+    Randomly apply the wrapper transformation with a given probability.
+    """
+
+    def __init__(self, transform, prob=0.5):
+        """
+        Args:
+            transform (Transform, TransformGen): the transform to be wrapped
+                by the `RandomApply`. The `transform` can either be a
+                `Transform` or `TransformGen` instance.
+            prob (float): probability between 0.0 and 1.0 that
+                the wrapper transformation is applied
+        """
+        super().__init__()
+        assert isinstance(transform, (Transform, TransformGen)), (
+            f"The given transform must either be a Transform or TransformGen instance. "
+            f"Not {type(transform)}"
+        )
+        assert 0.0 <= prob <= 1.0, f"Probablity must be between 0.0 and 1.0 (given: {prob})"
+        self.prob = prob
+        self.transform = transform
+
+    def get_transform(self, img):
+        do = self._rand_range() < self.prob
+        if do:
+            if isinstance(self.transform, TransformGen):
+                return self.transform.get_transform(img)
+            else:
+                return self.transform
+        else:
+            return NoOpTransform()
 
 
 class RandomFlip(TransformGen):
@@ -213,6 +249,57 @@ class ResizeShortestEdge(TransformGen):
         return ResizeTransform(h, w, newh, neww, self.interp)
 
 
+class RandomRotation(TransformGen):
+    """
+    This method returns a copy of this image, rotated the given
+    number of degrees counter clockwise around the given center.
+    """
+
+    def __init__(self, angle, expand=True, center=None, sample_style="range", interp=None):
+        """
+        Args:
+            angle (list[float]): If ``sample_style=="range"``,
+                a [min, max] interval from which to sample the angle (in degrees).
+                If ``sample_style=="choice"``, a list of angles to sample from
+            expand (bool): choose if the image should be resized to fit the whole
+                rotated image (default), or simply cropped
+            center (list[[float, float]]):  If ``sample_style=="range"``,
+                a [[minx, miny], [maxx, maxy]] relative interval from which to sample the center,
+                [0, 0] being the top left of the image and [1, 1] the bottom right.
+                If ``sample_style=="choice"``, a list of centers to sample from
+                Default: None, which means that the center of rotation is the center of the image
+                center has no effect if expand=True because it only affects shifting
+        """
+        super().__init__()
+        assert sample_style in ["range", "choice"], sample_style
+        self.is_range = sample_style == "range"
+        if isinstance(angle, (float, int)):
+            angle = (angle, angle)
+        if center is not None and isinstance(center[0], (float, int)):
+            center = (center, center)
+        self._init(locals())
+
+    def get_transform(self, img):
+        h, w = img.shape[:2]
+        center = None
+        if self.is_range:
+            angle = np.random.uniform(self.angle[0], self.angle[1])
+            if self.center is not None:
+                center = (
+                    np.random.uniform(self.center[0][0], self.center[1][0]),
+                    np.random.uniform(self.center[0][1], self.center[1][1]),
+                )
+        else:
+            angle = np.random.choice(self.angle)
+            if self.center is not None:
+                center = np.random.choice(self.center)
+
+        if center is not None:
+            center = (w * center[0], h * center[1])  # Convert to absolute coordinates
+
+        return RotationTransform(h, w, angle, expand=self.expand, center=center, interp=self.interp)
+
+
 class RandomCrop(TransformGen):
     """
     Randomly crop a subimage out of an image.
@@ -255,7 +342,7 @@ class RandomCrop(TransformGen):
             ch, cw = crop_size + np.random.rand(2) * (1 - crop_size)
             return int(h * ch + 0.5), int(w * cw + 0.5)
         elif self.crop_type == "absolute":
-            return self.crop_size
+            return (min(self.crop_size[0], h), min(self.crop_size[1], w))
         else:
             NotImplementedError("Unknown crop type {}".format(self.crop_type))
 

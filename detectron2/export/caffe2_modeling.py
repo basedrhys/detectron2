@@ -11,7 +11,7 @@ from detectron2.modeling.box_regression import Box2BoxTransform
 from detectron2.modeling.meta_arch.panoptic_fpn import combine_semantic_and_instance_outputs
 from detectron2.modeling.postprocessing import detector_postprocess, sem_seg_postprocess
 from detectron2.modeling.roi_heads import keypoint_head
-from detectron2.structures import Boxes, ImageList, Instances
+from detectron2.structures import Boxes, ImageList, Instances, RotatedBoxes
 
 from .c10 import Caffe2Compatible
 from .patcher import ROIHeadsPatcher, patch_generalized_rcnn
@@ -55,7 +55,10 @@ def assemble_rcnn_outputs_by_name(image_sizes, tensor_outputs, force_mask_on=Fal
     assert bbox_nms is not None
     assert score_nms is not None
     assert class_nms is not None
-    result.pred_boxes = Boxes(bbox_nms)
+    if bbox_nms.shape[1] == 5:
+        result.pred_boxes = RotatedBoxes(bbox_nms)
+    else:
+        result.pred_boxes = Boxes(bbox_nms)
     result.scores = score_nms
     result.pred_classes = class_nms.to(torch.int64)
 
@@ -204,7 +207,8 @@ class Caffe2MetaArch(Caffe2Compatible, torch.nn.Module):
         data, im_info = inputs
         data = alias(data, "data")
         im_info = alias(im_info, "im_info")
-        normalized_data = self._wrapped_model.normalizer(data)
+        mean, std = self._wrapped_model.pixel_mean, self._wrapped_model.pixel_std
+        normalized_data = (data - mean) / std
         normalized_data = alias(normalized_data, "normalized_data")
 
         # Pack (data, im_info) into ImageList which is recognized by self.inference.

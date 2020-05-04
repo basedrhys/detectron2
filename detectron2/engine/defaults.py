@@ -12,6 +12,7 @@ since they are meant to represent the "common default behavior" people need in t
 import argparse
 import logging
 import os
+import sys
 from collections import OrderedDict
 import torch
 from fvcore.common.file_io import PathManager
@@ -50,14 +51,30 @@ __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "Defa
 
 from detectron2.evaluation import COCOEvaluator
 
-def default_argument_parser():
+def default_argument_parser(epilog=None):
     """
     Create a parser with some common arguments used by detectron2 users.
+
+    Args:
+        epilog (str): epilog passed to ArgumentParser describing the usage.
 
     Returns:
         argparse.ArgumentParser:
     """
-    parser = argparse.ArgumentParser(description="Detectron2 Training")
+    parser = argparse.ArgumentParser(
+        epilog=epilog
+        or f"""
+Examples:
+
+Run on single machine:
+    $ {sys.argv[0]} --num-gpus 8 --config-file cfg.yaml MODEL.WEIGHTS /path/to/weight.pth
+
+Run on multiple machines:
+    (machine0)$ {sys.argv[0]} --machine-rank 0 --num-machines 2 --dist-url <URL> [--other-flags]
+    (machine1)$ {sys.argv[0]} --machine-rank 1 --num-machines 2 --dist-url <URL> [--other-flags]
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--config-file", default="", metavar="FILE", help="path to config file")
     parser.add_argument(
         "--resume",
@@ -66,7 +83,7 @@ def default_argument_parser():
     )
     parser.add_argument("--eval-only", action="store_true", help="perform evaluation only")
     parser.add_argument("--num-gpus", type=int, default=1, help="number of gpus *per machine*")
-    parser.add_argument("--num-machines", type=int, default=1)
+    parser.add_argument("--num-machines", type=int, default=1, help="total number of machines")
     parser.add_argument(
         "--machine-rank", type=int, default=0, help="the rank of this machine (unique per machine)"
     )
@@ -74,8 +91,13 @@ def default_argument_parser():
     # PyTorch still may leave orphan processes in multi-gpu training.
     # Therefore we use a deterministic way to obtain port,
     # so that users are aware of orphan processes by seeing the port occupied.
-    port = 2 ** 15 + 2 ** 14 + hash(os.getuid()) % 2 ** 14
-    parser.add_argument("--dist-url", default="tcp://127.0.0.1:{}".format(port))
+    port = 2 ** 15 + 2 ** 14 + hash(os.getuid() if sys.platform != "win32" else 1) % 2 ** 14
+    parser.add_argument(
+        "--dist-url",
+        default="tcp://127.0.0.1:{}".format(port),
+        help="initialization URL for pytorch distributed backend. See "
+        "https://pytorch.org/docs/stable/distributed.html for details.",
+    )
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
@@ -123,7 +145,7 @@ def default_setup(cfg, args):
         path = os.path.join(output_dir, "config.yaml")
         with PathManager.open(path, "w") as f:
             f.write(cfg.dump())
-        logger.info("Full config saved to {}".format(os.path.abspath(path)))
+        logger.info("Full config saved to {}".format(path))
 
     # make sure each worker has a different, yet deterministic seed if specified
     seed_all_rng(None if cfg.SEED < 0 else cfg.SEED + rank)
@@ -208,7 +230,8 @@ class DefaultTrainer(SimpleTrainer):
     contains the following logic in addition:
 
     1. Create model, optimizer, scheduler, dataloader from the given config.
-    2. Load a checkpoint or `cfg.MODEL.WEIGHTS`, if exists.
+    2. Load a checkpoint or `cfg.MODEL.WEIGHTS`, if exists, when
+       `resume_or_load` is called.
     3. Register a few common hooks.
 
     It is created to simplify the **standard model training workflow** and reduce code boilerplate
@@ -230,11 +253,6 @@ class DefaultTrainer(SimpleTrainer):
     It is only guaranteed to work well with the standard models and training workflow in detectron2.
     To obtain more stable behavior, write your own training logic with other public APIs.
 
-    Attributes:
-        scheduler:
-        checkpointer (DetectionCheckpointer):
-        cfg (CfgNode):
-
     Examples:
 
     .. code-block:: python
@@ -242,6 +260,11 @@ class DefaultTrainer(SimpleTrainer):
         trainer = DefaultTrainer(cfg)
         trainer.resume_or_load()  # load last checkpoint or MODEL.WEIGHTS
         trainer.train()
+
+    Attributes:
+        scheduler:
+        checkpointer (DetectionCheckpointer):
+        cfg (CfgNode):
     """
 
     def __init__(self, cfg):
@@ -284,21 +307,19 @@ class DefaultTrainer(SimpleTrainer):
 
     def resume_or_load(self, resume=True):
         """
-        If `resume==True`, and last checkpoint exists, resume from it.
+        If `resume==True`, and last checkpoint exists, resume from it and load all
+        checkpointables (eg. optimizer and scheduler).
 
-        Otherwise, load a model specified by the config.
+        Otherwise, load the model specified by the config (skip all checkpointables).
 
         Args:
             resume (bool): whether to do resume or not
         """
+        checkpoint = self.checkpointer.resume_or_load(self.cfg.MODEL.WEIGHTS, resume=resume)
+        self.start_iter = checkpoint.get("iteration", -1) if resume else -1
         # The checkpoint stores the training iteration that just finished, thus we start
         # at the next iteration (or iter zero if there's no checkpoint).
-        self.start_iter = (
-            self.checkpointer.resume_or_load(self.cfg.MODEL.WEIGHTS, resume=resume).get(
-                "iteration", -1
-            )
-            + 1
-        )
+        self.start_iter += 1
 
     def build_hooks(self):
         """
@@ -491,8 +512,11 @@ class DefaultTrainer(SimpleTrainer):
         It is not implemented by default.
         """
         raise NotImplementedError(
-            "Please either implement `build_evaluator()` in subclasses, or pass "
-            "your evaluator as arguments to `DefaultTrainer.test()`."
+            """
+If you want DefaultTrainer to automatically run evaluation,
+please implement `build_evaluator()` in subclasses (see train_net.py for example).
+Alternatively, you can call evaluation functions yourself (see Colab balloon tutorial for example).
+"""
         )
 
     @classmethod

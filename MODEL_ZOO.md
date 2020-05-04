@@ -5,8 +5,10 @@
 This file documents a large collection of baselines trained
 with detectron2 in Sep-Oct, 2019.
 All numbers were obtained on [Big Basin](https://engineering.fb.com/data-center-engineering/introducing-big-basin-our-next-generation-ai-hardware/)
-servers with 8 NVIDIA V100 GPUs & NVLink. The softwares in use were PyTorch 1.3, CUDA 9.2, cuDNN 7.4.2 or 7.6.3.
+servers with 8 NVIDIA V100 GPUs & NVLink. The software in use were PyTorch 1.3, CUDA 9.2, cuDNN 7.4.2 or 7.6.3.
 You can access these models from code using [detectron2.model_zoo](https://detectron2.readthedocs.io/modules/model_zoo.html) APIs.
+
+In addition to these official baseline models, you can find more models in [projects/](projects/).
 
 #### How to Read the Tables
 * The "Name" column contains a link to the config file. Running `tools/train_net.py` with this config file
@@ -14,6 +16,7 @@ You can access these models from code using [detectron2.model_zoo](https://detec
 * Training speed is averaged across the entire training.
 	We keep updating the speed with latest version of detectron2/pytorch/etc.,
 	so they might be different from the `metrics` file.
+	Training speed for multi-machine jobs is not provided.
 * Inference speed is measured by `tools/train_net.py --eval-only`, or [inference_on_dataset()](https://detectron2.readthedocs.io/modules/evaluation.html#detectron2.evaluation.inference_on_dataset),
   with batch size 1 in detectron2 directly.
 	Measuring it with your own code will likely introduce other overhead.
@@ -48,9 +51,9 @@ You can access these models from code using [detectron2.model_zoo](https://detec
 
 We provide backbone models pretrained on ImageNet-1k dataset.
 These models have __different__ format from those provided in Detectron: we do not fuse BatchNorm into an affine layer.
-* [R-50.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/MSRA/R-50.pkl): converted copy of MSRA's original ResNet-50 model
-* [R-101.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/MSRA/R-101.pkl): converted copy of MSRA's original ResNet-101 model
-* [X-101-32x8d.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/FAIR/X-101-32x8d.pkl): ResNeXt-101-32x8d model trained with Caffe2 at FB
+* [R-50.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/MSRA/R-50.pkl): converted copy of [MSRA's original ResNet-50](https://github.com/KaimingHe/deep-residual-networks) model.
+* [R-101.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/MSRA/R-101.pkl): converted copy of [MSRA's original ResNet-101](https://github.com/KaimingHe/deep-residual-networks) model.
+* [X-101-32x8d.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/FAIR/X-101-32x8d.pkl): ResNeXt-101-32x8d model trained with Caffe2 at FB.
 
 Pretrained models in Detectron's format can still be used. For example:
 * [X-152-32x8d-IN5k.pkl](https://dl.fbaipublicfiles.com/detectron/ImageNetPretrained/25093814/X-152-32x8d-IN5k.pkl):
@@ -59,6 +62,8 @@ Pretrained models in Detectron's format can still be used. For example:
   ResNet-50 with Group Normalization.
 * [R-101-GN.pkl](https://dl.fbaipublicfiles.com/detectron/ImageNetPretrained/47592356/R-101-GN.pkl):
   ResNet-101 with Group Normalization.
+
+Torchvision's ResNet models can be used after converted by [this script](tools/convert-torchvision-to-d2.py).
 
 #### License
 
@@ -756,11 +761,10 @@ Ablations for Deformable Conv and Cascade R-CNN:
 </tbody></table>
 
 
-Ablations for normalization methods:
-(Note: The baseline uses `2fc` head while the others use `4conv1fc` head. According to the
-[GroupNorm paper](https://arxiv.org/abs/1803.08494), the change in head does not improve the baseline by much)
+Ablations for normalization methods, and a few models trained from scratch following [Rethinking ImageNet Pre-training](https://arxiv.org/abs/1811.08883).
+(Note: The baseline uses `2fc` head while the others use [`4conv1fc` head](https://arxiv.org/abs/1803.08494))
 <!--
-./gen_html_table.py --config 'COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml' 'Misc/mask*50_FPN_3x_syncbn.yaml' 'Misc/mask*50_FPN_3x_gn.yaml' 'Misc/scratch*' --name "Baseline R50-FPN" "SyncBN" "GN" "GN (scratch)" --fields lr_sched train_speed inference_speed mem box_AP mask_AP
+./gen_html_table.py --config 'COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml' 'Misc/mask*50_FPN_3x_gn.yaml' 'Misc/mask*50_FPN_3x_syncbn.yaml' 'Misc/scratch*' --name "Baseline R50-FPN" "GN" "SyncBN" "GN (from scratch)" "GN (from scratch)" "SyncBN (from scratch)" --fields lr_sched train_speed inference_speed mem box_AP mask_AP
    -->
 
 
@@ -788,17 +792,6 @@ Ablations for normalization methods:
 <td align="center">137849600</td>
 <td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x/137849600/model_final_f10217.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x/137849600/metrics.json">metrics</a></td>
 </tr>
-<!-- ROW: mask_rcnn_R_50_FPN_3x_syncbn -->
- <tr><td align="left"><a href="configs/Misc/mask_rcnn_R_50_FPN_3x_syncbn.yaml">SyncBN</a></td>
-<td align="center">3x</td>
-<td align="center">0.412</td>
-<td align="center">0.053</td>
-<td align="center">5.5</td>
-<td align="center">41.9</td>
-<td align="center">37.8</td>
-<td align="center">169527823</td>
-<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/Misc/mask_rcnn_R_50_FPN_3x_syncbn/169527823/model_final_3b3c51.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/Misc/mask_rcnn_R_50_FPN_3x_syncbn/169527823/metrics.json">metrics</a></td>
-</tr>
 <!-- ROW: mask_rcnn_R_50_FPN_3x_gn -->
  <tr><td align="left"><a href="configs/Misc/mask_rcnn_R_50_FPN_3x_gn.yaml">GN</a></td>
 <td align="center">3x</td>
@@ -810,8 +803,19 @@ Ablations for normalization methods:
 <td align="center">138602888</td>
 <td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/Misc/mask_rcnn_R_50_FPN_3x_gn/138602888/model_final_dc5d9e.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/Misc/mask_rcnn_R_50_FPN_3x_gn/138602888/metrics.json">metrics</a></td>
 </tr>
+<!-- ROW: mask_rcnn_R_50_FPN_3x_syncbn -->
+ <tr><td align="left"><a href="configs/Misc/mask_rcnn_R_50_FPN_3x_syncbn.yaml">SyncBN</a></td>
+<td align="center">3x</td>
+<td align="center">0.371</td>
+<td align="center">0.053</td>
+<td align="center">5.5</td>
+<td align="center">41.9</td>
+<td align="center">37.8</td>
+<td align="center">169527823</td>
+<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/Misc/mask_rcnn_R_50_FPN_3x_syncbn/169527823/model_final_3b3c51.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/Misc/mask_rcnn_R_50_FPN_3x_syncbn/169527823/metrics.json">metrics</a></td>
+</tr>
 <!-- ROW: scratch_mask_rcnn_R_50_FPN_3x_gn -->
- <tr><td align="left"><a href="configs/Misc/scratch_mask_rcnn_R_50_FPN_3x_gn.yaml">GN (scratch)</a></td>
+ <tr><td align="left"><a href="configs/Misc/scratch_mask_rcnn_R_50_FPN_3x_gn.yaml">GN (from scratch)</a></td>
 <td align="center">3x</td>
 <td align="center">0.400</td>
 <td align="center">0.069</td>
@@ -821,11 +825,32 @@ Ablations for normalization methods:
 <td align="center">138602908</td>
 <td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/Misc/scratch_mask_rcnn_R_50_FPN_3x_gn/138602908/model_final_01ca85.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/Misc/scratch_mask_rcnn_R_50_FPN_3x_gn/138602908/metrics.json">metrics</a></td>
 </tr>
+<!-- ROW: scratch_mask_rcnn_R_50_FPN_9x_gn -->
+ <tr><td align="left"><a href="configs/Misc/scratch_mask_rcnn_R_50_FPN_9x_gn.yaml">GN (from scratch)</a></td>
+<td align="center">9x</td>
+<td align="center">N/A</td>
+<td align="center">0.070</td>
+<td align="center">9.8</td>
+<td align="center">43.7</td>
+<td align="center">39.6</td>
+<td align="center">183808979</td>
+<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/Misc/scratch_mask_rcnn_R_50_FPN_9x_gn/183808979/model_final_da7b4c.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/Misc/scratch_mask_rcnn_R_50_FPN_9x_gn/183808979/metrics.json">metrics</a></td>
+</tr>
+<!-- ROW: scratch_mask_rcnn_R_50_FPN_9x_syncbn -->
+ <tr><td align="left"><a href="configs/Misc/scratch_mask_rcnn_R_50_FPN_9x_syncbn.yaml">SyncBN (from scratch)</a></td>
+<td align="center">9x</td>
+<td align="center">N/A</td>
+<td align="center">0.055</td>
+<td align="center">7.2</td>
+<td align="center">43.6</td>
+<td align="center">39.3</td>
+<td align="center">184226666</td>
+<td align="center"><a href="https://dl.fbaipublicfiles.com/detectron2/Misc/scratch_mask_rcnn_R_50_FPN_9x_syncbn/184226666/model_final_5ce33e.pkl">model</a>&nbsp;|&nbsp;<a href="https://dl.fbaipublicfiles.com/detectron2/Misc/scratch_mask_rcnn_R_50_FPN_9x_syncbn/184226666/metrics.json">metrics</a></td>
+</tr>
 </tbody></table>
 
 
-
-A few very large models trained for a long time, for demo purposes:
+A few very large models trained for a long time, for demo purposes. They are trained using multiple machines:
 
 <!--
 ./gen_html_table.py --config 'Misc/panoptic_*dconv*' 'Misc/cascade_*152*' --name "Panoptic FPN R101" "Mask R-CNN X152" --fields inference_speed mem box_AP mask_AP PQ
