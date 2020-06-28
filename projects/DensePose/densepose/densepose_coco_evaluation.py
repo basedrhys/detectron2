@@ -9,7 +9,6 @@ __author__ = "tsungyi"
 
 import copy
 import datetime
-import itertools
 import logging
 import numpy as np
 import pickle
@@ -141,7 +140,7 @@ class DensePoseCocoEval(object):
             "https://dl.fbaipublicfiles.com/densepose/data/SMPL_SUBDIV_TRANSFORM.mat"
         )
         pdist_matrix_fpath = PathManager.get_local_path(
-            "https://dl.fbaipublicfiles.com/densepose/data/Pdist_matrix.pkl"
+            "https://dl.fbaipublicfiles.com/densepose/data/Pdist_matrix.pkl", timeout_sec=120
         )
         SMPL_subdiv = loadmat(smpl_subdiv_fpath)
         self.PDIST_transform = loadmat(pdist_transform_fpath)
@@ -188,10 +187,10 @@ class DensePoseCocoEval(object):
             if len(img["ignore_regions_x"]) == 0:
                 return None
 
-            rgns_merged = []
-            for region_x, region_y in zip(img["ignore_regions_x"], img["ignore_regions_y"]):
-                rgns = [iter(region_x), iter(region_y)]
-                rgns_merged.append([next(it) for it in itertools.cycle(rgns)])
+            rgns_merged = [
+                [v for xy in zip(region_x, region_y) for v in xy]
+                for region_x, region_y in zip(img["ignore_regions_x"], img["ignore_regions_y"])
+            ]
             rles = maskUtils.frPyObjects(rgns_merged, img["height"], img["width"])
             rle = maskUtils.merge(rles)
             return maskUtils.decode(rle)

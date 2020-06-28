@@ -44,7 +44,7 @@ class SemanticSegmentor(nn.Module):
     def forward(self, batched_inputs):
         """
         Args:
-            batched_inputs: a list, batched outputs of :class:`DatasetMapper` .
+            batched_inputs: a list, batched outputs of :class:`DatasetMapper`.
                 Each item in the list contains the inputs for one image.
 
                 For now, each item in the list is a dict that contains:
@@ -52,15 +52,18 @@ class SemanticSegmentor(nn.Module):
                    * "image": Tensor, image in (C, H, W) format.
                    * "sem_seg": semantic segmentation ground truth
                    * Other information that's included in the original dicts, such as:
-                     "height", "width" (int): the output resolution of the model, used in inference.
-                     See :meth:`postprocess` for details.
+                     "height", "width" (int): the output resolution of the model (may be different
+                     from input resolution), used in inference.
+
 
         Returns:
             list[dict]:
               Each dict is the output for one input image.
               The dict contains one key "sem_seg" whose value is a
-              Tensor of the output resolution that represents the
-              per-pixel segmentation prediction.
+              Tensor that represents the
+              per-pixel segmentation prediced by the head.
+              The prediction has shape KxHxW that represents the logits of
+              each class for each pixel.
         """
         images = [x["image"].to(self.device) for x in batched_inputs]
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
@@ -100,9 +103,9 @@ def build_sem_seg_head(cfg, input_shape):
 @SEM_SEG_HEADS_REGISTRY.register()
 class SemSegFPNHead(nn.Module):
     """
-    A semantic segmentation head described in detail in the Panoptic Feature Pyramid Networks paper
-    (https://arxiv.org/abs/1901.02446). It takes FPN features as input and merges information from
-    all levels of the FPN into single output.
+    A semantic segmentation head described in :paper:`PanopticFPN`.
+    It takes FPN features as input and merges information from all
+    levels of the FPN into single output.
     """
 
     def __init__(self, cfg, input_shape: Dict[str, ShapeSpec]):
@@ -153,7 +156,7 @@ class SemSegFPNHead(nn.Module):
         """
         Returns:
             In training, returns (None, dict of losses)
-            In inference, returns (predictions, {})
+            In inference, returns (CxHxW logits, {})
         """
         x = self.layers(features)
         if self.training:

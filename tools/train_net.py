@@ -44,9 +44,8 @@ class Trainer(DefaultTrainer):
     """
     We use the "DefaultTrainer" which contains pre-defined default logic for
     standard training workflow. They may not work for you, especially if you
-    are working on a new research project. In that case you can use the cleaner
-    "SimpleTrainer", or write your own training loop. You can use
-    "tools/plain_train_net.py" as an example.
+    are working on a new research project. In that case you can write your
+    own training loop. You can use "tools/plain_train_net.py" as an example.
     """
 
     @classmethod
@@ -146,7 +145,8 @@ def main(args):
 
     """
     If you'd like to do anything fancier than the standard training logic,
-    consider writing your own training loop or subclassing the trainer.
+    consider writing your own training loop (see plain_train_net.py) or
+    subclassing the trainer.
     """
     trainer = Trainer(cfg)
     trainer.resume_or_load(resume=args.resume)

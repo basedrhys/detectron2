@@ -185,10 +185,11 @@ Category ids in annotations are not in [1, #categories]! We'll apply a mapping f
 
     if num_instances_without_valid_segmentation > 0:
         logger.warning(
-            "Filtered out {} instances without valid segmentation. "
-            "There might be issues in your dataset generation process.".format(
+            "Filtered out {} instances without valid segmentation. ".format(
                 num_instances_without_valid_segmentation
             )
+            + "There might be issues in your dataset generation process. "
+            "A valid polygon should be a list[float] with even length >= 6."
         )
     return dataset_dicts
 
@@ -317,7 +318,7 @@ def convert_to_coco_dict(dataset_name):
         }
         coco_images.append(coco_image)
 
-        anns_per_image = image_dict["annotations"]
+        anns_per_image = image_dict.get("annotations", [])
         for annotation in anns_per_image:
             # create a new dict with only COCO fields
             coco_annotation = {}
@@ -374,30 +375,26 @@ def convert_to_coco_dict(dataset_name):
                 coco_annotation["num_keypoints"] = num_keypoints
 
             if "segmentation" in annotation:
-                coco_annotation["segmentation"] = annotation["segmentation"]
-                if isinstance(coco_annotation["segmentation"], dict):  # RLE
-                    coco_annotation["segmentation"]["counts"] = coco_annotation["segmentation"][
-                        "counts"
-                    ].decode("ascii")
+                seg = coco_annotation["segmentation"] = annotation["segmentation"]
+                if isinstance(seg, dict):  # RLE
+                    counts = seg["counts"]
+                    if not isinstance(counts, str):
+                        seg["counts"] = counts.decode("ascii")
 
             coco_annotations.append(coco_annotation)
 
     logger.info(
         "Conversion finished, "
-        f"num images: {len(coco_images)}, num annotations: {len(coco_annotations)}"
+        f"#images: {len(coco_images)}, #annotations: {len(coco_annotations)}"
     )
 
     info = {
         "date_created": str(datetime.datetime.now()),
         "description": "Automatically generated COCO json file for Detectron2.",
     }
-    coco_dict = {
-        "info": info,
-        "images": coco_images,
-        "annotations": coco_annotations,
-        "categories": categories,
-        "licenses": None,
-    }
+    coco_dict = {"info": info, "images": coco_images, "categories": categories, "licenses": None}
+    if len(coco_annotations) > 0:
+        coco_dict["annotations"] = coco_annotations
     return coco_dict
 
 

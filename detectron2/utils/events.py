@@ -44,9 +44,7 @@ class JSONWriter(EventWriter):
     It saves scalars as one json per line (instead of a big json) for easy parsing.
 
     Examples parsing such a json file:
-
-    .. code-block:: none
-
+    ::
         $ cat metrics.json | jq -s '.[0:2]'
         [
           {
@@ -157,8 +155,10 @@ class CommonMetricPrinter(EventWriter):
     """
     Print **common** metrics to the terminal, including
     iteration time, ETA, memory, all losses, and the learning rate.
+    It also applies smoothing using a window of 20 elements.
 
-    To print something different, please implement a similar printer by yourself.
+    It's meant to print common metrics in common ways.
+    To print something in more customized ways, please implement a similar printer by yourself.
     """
 
     def __init__(self, max_iter):
@@ -182,7 +182,7 @@ class CommonMetricPrinter(EventWriter):
             # or when SimpleTrainer is not used
             data_time = None
 
-        eta_string = "N/A"
+        eta_string = None
         try:
             iter_time = storage.history("time").global_avg()
             eta_seconds = storage.history("time").median(1000) * (self._max_iter - iteration)
@@ -211,8 +211,8 @@ class CommonMetricPrinter(EventWriter):
 
         # NOTE: max_mem is parsed by grep in "dev/parse_results.sh"
         self.logger.info(
-            " eta: {eta}  iter: {iter}  {losses}  {time}{data_time}lr: {lr}  {memory}".format(
-                eta=eta_string,
+            " {eta}iter: {iter}  {losses}  {time}{data_time}lr: {lr}  {memory}".format(
+                eta=f"eta: {eta_string}  " if eta_string else "",
                 iter=iteration,
                 losses="  ".join(
                     [

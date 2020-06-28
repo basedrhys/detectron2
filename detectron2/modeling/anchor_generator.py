@@ -22,16 +22,10 @@ class BufferList(nn.Module):
     Similar to nn.ParameterList, but for buffers
     """
 
-    def __init__(self, buffers=None):
+    def __init__(self, buffers):
         super(BufferList, self).__init__()
-        if buffers is not None:
-            self.extend(buffers)
-
-    def extend(self, buffers):
-        offset = len(self)
         for i, buffer in enumerate(buffers):
-            self.register_buffer(str(offset + i), buffer)
-        return self
+            self.register_buffer(str(i), buffer)
 
     def __len__(self):
         return len(self._buffers)
@@ -142,6 +136,13 @@ class DefaultAnchorGenerator(nn.Module):
     @property
     def num_cell_anchors(self):
         """
+        Alias of `num_anchors`.
+        """
+        return self.num_anchors
+
+    @property
+    def num_anchors(self):
+        """
         Returns:
             list[int]: Each int is the number of anchors at every pixel
                 location, on that feature map.
@@ -149,7 +150,7 @@ class DefaultAnchorGenerator(nn.Module):
                 ratios and 5 sizes, the number of anchors is 15.
                 (See also ANCHOR_GENERATOR.SIZES and ANCHOR_GENERATOR.ASPECT_RATIOS in config)
 
-                In standard RPN models, `num_cell_anchors` on every feature map is the same.
+                In standard RPN models, `num_anchors` on every feature map is the same.
         """
         return [len(cell_anchors) for cell_anchors in self.cell_anchors]
 
@@ -159,7 +160,9 @@ class DefaultAnchorGenerator(nn.Module):
             list[Tensor]: #featuremap tensors, each is (#locations x #cell_anchors) x 4
         """
         anchors = []
-        for size, stride, base_anchors in zip(grid_sizes, self.strides, self.cell_anchors):
+        # buffers() not supported by torchscript. use named_buffers() instead
+        buffers: List[torch.Tensor] = [x[1] for x in self.cell_anchors.named_buffers()]
+        for size, stride, base_anchors in zip(grid_sizes, self.strides, buffers):
             shift_x, shift_y = _create_grid_offsets(size, stride, self.offset, base_anchors.device)
             shifts = torch.stack((shift_x, shift_y, shift_x, shift_y), dim=1)
 
@@ -204,7 +207,7 @@ class DefaultAnchorGenerator(nn.Module):
                 anchors.append([x0, y0, x1, y1])
         return torch.tensor(anchors)
 
-    def forward(self, features):
+    def forward(self, features: List[torch.Tensor]):
         """
         Args:
             features (list[Tensor]): list of backbone feature maps on which to generate anchors.
@@ -285,6 +288,13 @@ class RotatedAnchorGenerator(nn.Module):
     @property
     def num_cell_anchors(self):
         """
+        Alias of `num_anchors`.
+        """
+        return self.num_anchors
+
+    @property
+    def num_anchors(self):
+        """
         Returns:
             list[int]: Each int is the number of anchors at every pixel
                 location, on that feature map.
@@ -293,7 +303,7 @@ class RotatedAnchorGenerator(nn.Module):
                 (See also ANCHOR_GENERATOR.SIZES, ANCHOR_GENERATOR.ASPECT_RATIOS
                 and ANCHOR_GENERATOR.ANGLES in config)
 
-                In standard RRPN models, `num_cell_anchors` on every feature map is the same.
+                In standard RRPN models, `num_anchors` on every feature map is the same.
         """
         return [len(cell_anchors) for cell_anchors in self.cell_anchors]
 

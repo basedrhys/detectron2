@@ -6,7 +6,7 @@ from typing import List
 
 from detectron2.utils.logger import log_first_n
 
-__all__ = ["DatasetCatalog", "MetadataCatalog"]
+__all__ = ["DatasetCatalog", "MetadataCatalog", "Metadata"]
 
 
 class DatasetCatalog(object):
@@ -33,6 +33,7 @@ class DatasetCatalog(object):
         Args:
             name (str): the name that identifies a dataset, e.g. "coco_2014_train".
             func (callable): a callable which takes no arguments and returns a list of dicts.
+                It must return the same results if called multiple times.
         """
         assert callable(func), "You must register a function with `DatasetCatalog.register`!"
         assert name not in DatasetCatalog._REGISTERED, "Dataset '{}' is already registered!".format(
@@ -78,6 +79,13 @@ class DatasetCatalog(object):
         """
         DatasetCatalog._REGISTERED.clear()
 
+    @staticmethod
+    def remove(name):
+        """
+        Remove the dataset registered by ``name``.
+        """
+        DatasetCatalog._REGISTERED.pop(name)
+
 
 class Metadata(types.SimpleNamespace):
     """
@@ -85,9 +93,7 @@ class Metadata(types.SimpleNamespace):
     It is intended for storing metadata of a dataset and make it accessible globally.
 
     Examples:
-
-    .. code-block:: python
-
+    ::
         # somewhere when you load the data:
         MetadataCatalog.get("mydataset").thing_classes = ["person", "dog"]
 
@@ -114,11 +120,17 @@ class Metadata(types.SimpleNamespace):
             )
             return getattr(self, self._RENAMED[key])
 
-        raise AttributeError(
-            "Attribute '{}' does not exist in the metadata of '{}'. Available keys are {}.".format(
-                key, self.name, str(self.__dict__.keys())
+        # "name" exists in every metadata
+        if len(self.__dict__) > 1:
+            raise AttributeError(
+                "Attribute '{}' does not exist in the metadata of dataset '{}'. Available "
+                "keys are {}.".format(key, self.name, str(self.__dict__.keys()))
             )
-        )
+        else:
+            raise AttributeError(
+                f"Attribute '{key}' does not exist in the metadata of dataset '{self.name}': "
+                "metadata is empty."
+            )
 
     def __setattr__(self, key, val):
         if key in self._RENAMED:
@@ -219,3 +231,17 @@ metadata to each split (now called dataset) separately!
             list[str]: keys (names of datasets) of all registered metadata
         """
         return list(MetadataCatalog._NAME_TO_META.keys())
+
+    @staticmethod
+    def clear():
+        """
+        Remove all registered metadata.
+        """
+        MetadataCatalog._NAME_TO_META.clear()
+
+    @staticmethod
+    def remove(name):
+        """
+        Remove the metadata registered by ``name``.
+        """
+        MetadataCatalog._NAME_TO_META.pop(name)
